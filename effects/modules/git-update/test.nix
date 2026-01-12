@@ -27,6 +27,12 @@ effectVMTest {
     ../../testsupport/dns.nix
     ../../testsupport/gitea.nix
     ../../testsupport/setup.nix
+    (
+      { pkgs, ... }:
+      {
+        nodes.client.environment.systemPackages = [ pkgs.gnugrep ];
+      }
+    )
   ];
   name = "git-update";
   effects = {
@@ -261,11 +267,13 @@ effectVMTest {
           git rev-parse origin/main
         )
       """).rstrip()
+      print(f"DEBUG: mainUpdateRev='{mainUpdateRev}'")
 
       agent.succeed(f"echo {gitea_admin_password} | effect-update-reset")
 
       client.succeed(f"""
         (
+          set -x
           cd repo
           git fetch origin
 
