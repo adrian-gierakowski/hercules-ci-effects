@@ -88,6 +88,7 @@ in
         type = types.enum [
           "merge"
           "rebase"
+          "reset"
         ];
         default = "merge";
       };
@@ -206,6 +207,10 @@ in
             echo "Rebasing $HCI_GIT_UPDATE_BRANCH onto $baseDescr ..."
             git rebase "refs/remotes/origin/$HCI_GIT_UPDATE_BASE_BRANCH" || die_conflict
             ;;
+          reset)
+            echo "Resetting $HCI_GIT_UPDATE_BRANCH to $baseDescr ..."
+            git reset --hard "refs/remotes/origin/$HCI_GIT_UPDATE_BASE_BRANCH"
+            ;;
         esac
         unset baseDescr
       fi
@@ -227,7 +232,7 @@ in
       else
         declare -a gitPushArgs
         case "''${HCI_GIT_UPDATE_BASE_MERGE_METHOD:-}" in
-          rebase)
+          rebase|reset)
             gitPushArgs+=(--force-with-lease)
             ;;
         esac

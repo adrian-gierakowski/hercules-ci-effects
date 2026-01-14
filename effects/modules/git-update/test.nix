@@ -27,6 +27,12 @@ effectVMTest {
     ../../testsupport/dns.nix
     ../../testsupport/gitea.nix
     ../../testsupport/setup.nix
+    (
+      { pkgs, ... }:
+      {
+        nodes.client.environment.systemPackages = [ pkgs.gnugrep ];
+      }
+    )
   ];
   name = "git-update";
   effects = {
@@ -62,6 +68,16 @@ effectVMTest {
         git commit -m 'update from update-rebase' file
       ";
       git.update.baseMerge.method = "rebase";
+      git.update.baseMerge.enable = true;
+      git.update.branch = "update";
+    };
+    update-reset = hci-effects.modularEffect {
+      imports = [ baseUpdate ];
+      git.update.script = ''
+        echo updated >> file
+        git commit -m 'update from update-reset' file
+      '';
+      git.update.baseMerge.method = "reset";
       git.update.baseMerge.enable = true;
       git.update.branch = "update";
     };
@@ -218,6 +234,65 @@ effectVMTest {
           # When the update branch has been rebased onto the updated main, the
           # updated main occurs in the history of the update branch.
           git log --format=%H origin/update | grep {mainUpdateRev}
+        )
+      """)
+
+    with subtest("Can reset"):
+      mainUpdateRev = client.succeed("""
+        (
+          set -x
+          cd repo
+          git fetch origin
+
+          # Switch to main
+          git checkout origin/main -B main
+
+          # Set up a pre-existing update branch that has diverged
+          git checkout -B update
+          echo conflict >> file
+          git add file
+          git commit -m 'conflicting change'
+          git push --force --set-upstream origin update
+
+          # Update main
+          git checkout main
+          echo from_main >> file
+          git add file
+          git commit -m 'main change'
+          git push
+
+          git log --graph --oneline --decorate update main origin/update origin/main
+        ) 1>&2
+        ( cd repo;
+          git rev-parse origin/main
+        )
+      """).rstrip()
+      print(f"DEBUG: mainUpdateRev='{mainUpdateRev}'")
+
+      agent.succeed(f"echo {gitea_admin_password} | effect-update-reset")
+
+      client.succeed(f"""
+        (
+          set -x
+          cd repo
+          git fetch origin
+
+          # Verify parentage
+          git log --format=%H origin/update | grep {mainUpdateRev}
+
+          # Verify content
+          git checkout origin/update
+          # The script appends "updated"
+          # Base was main, which appended "from_main" to "init"
+          # So we expect: init \n from_main \n updated
+
+          grep updated <file
+          grep from_main <file
+
+          # Verify 'conflicting change' is gone
+          if git log --oneline origin/update | grep 'conflicting change'; then
+             exit 1
+          fi
         )
       """)
 
